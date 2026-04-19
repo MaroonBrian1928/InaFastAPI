@@ -1,0 +1,26 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[env]
+TF_CPP_MIN_LOG_LEVEL = "2"
+
+[tasks.install]
+description = "Install Python dependencies for local development"
+run = """
+uv sync
+uv pip install --python .venv/bin/python --no-deps inaSpeechSegmenter
+"""
+
+[tasks.run]
+description = "Run the FastAPI app locally"
+depends = ["install"]
+run = "uv run uvicorn main:app --host 0.0.0.0 --port 8000"
+
+[tasks.doctor]
+description = "Show local tool versions"
+run = """
+python --version
+uv --version
+ffmpeg -version
+"""

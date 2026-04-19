@@ -4,7 +4,8 @@ A lightweight FastAPI wrapper around
 [inaSpeechSegmenter](https://github.com/ina-foss/inaSpeechSegmenter)
 that accepts audio file uploads and returns labeled time segments
 (speech, music, noise, etc.). The service is designed to run in Docker on
-CPU via TensorFlow.
+CPU via TensorFlow. Local development uses `mise` for tool management and
+`uv` for Python dependency management and command execution.
 
 ## Service
 
@@ -12,13 +13,22 @@ CPU via TensorFlow.
 - Host port: `8002`
 - Container port: `8000`
 - Endpoint: `POST /segment`
-- Model: loaded once at startup with `detect_gender=False`
+- Model: loaded on demand in a dedicated worker process with `detect_gender=False`
+- Worker lifecycle: kept warm while requests are active, then terminated after the idle timeout to release TensorFlow memory back to the OS
 - Model cache: persisted in a Docker volume mounted at `/root/.cache`
 
 ## Run
 
 ```bash
 docker compose up --build -d
+```
+
+## Local Development
+
+```bash
+mise install
+mise run install
+mise run run
 ```
 
 ## Usage

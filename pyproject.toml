@@ -1,0 +1,21 @@
+[project]
+name = "ina-speech-segmenter-api"
+version = "0.1.0"
+description = "FastAPI wrapper around inaSpeechSegmenter"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi",
+  "matplotlib",
+  "pandas",
+  "pyannote.core",
+  "python-multipart",
+  "pytextgrid",
+  "scikit-image",
+  "soundfile",
+  "sortedcontainers",
+  "tensorflow-cpu",
+  "uvicorn",
+]
+
+[tool.uv]
+package = false
