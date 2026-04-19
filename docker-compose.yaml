@@ -1,0 +1,11 @@
+services:
+  ina-segmenter:
+    build: .
+    ports:
+      - "8002:8000"
+    volumes:
+      - model-cache:/root/.cache
+    restart: unless-stopped
+
+volumes:
+  model-cache:
