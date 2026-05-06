@@ -14,8 +14,20 @@ CPU via TensorFlow. Local development uses `mise` for tool management and
 - Container port: `8000`
 - Endpoint: `POST /segment`
 - Model: loaded on demand in a dedicated worker process with `detect_gender=False`
+- Long uploads: split into bounded audio chunks before segmentation to reduce peak TensorFlow memory
 - Worker lifecycle: kept warm while requests are active, then terminated after the idle timeout to release TensorFlow memory back to the OS
 - Model cache: persisted in a Docker volume mounted at `/root/.cache`
+
+## Memory Controls
+
+The service avoids reading full uploads into Python memory and processes long
+audio in chunks before handing work to the TensorFlow worker.
+
+- `SEGMENTER_CHUNK_SECONDS`: chunk size for long audio, in seconds. Defaults to `600`.
+- `SEGMENTER_CHUNK_MIN_SECONDS`: minimum input duration before chunking is used. Defaults to `900`.
+- `SEGMENTER_MERGE_GAP_SECONDS`: max same-label gap to merge after chunk stitching. Defaults to `0.25`.
+- `SEGMENTER_UPLOAD_READ_SIZE`: upload streaming buffer size in bytes. Defaults to `1048576`.
+- `SEGMENTER_IDLE_TIMEOUT_SECONDS`: warm worker idle lifetime. Defaults to `60`.
 
 ## Run
 
