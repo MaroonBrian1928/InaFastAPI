@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -23,6 +24,7 @@ IDLE_TIMEOUT_SECONDS = int(os.getenv("SEGMENTER_IDLE_TIMEOUT_SECONDS", "60"))
 UPLOAD_READ_SIZE = int(os.getenv("SEGMENTER_UPLOAD_READ_SIZE", str(1024 * 1024)))
 CHUNK_SECONDS = int(os.getenv("SEGMENTER_CHUNK_SECONDS", "600"))
 CHUNK_MIN_SECONDS = int(os.getenv("SEGMENTER_CHUNK_MIN_SECONDS", "900"))
+MIN_TAIL_SECONDS = 60
 MERGE_GAP_SECONDS = float(os.getenv("SEGMENTER_MERGE_GAP_SECONDS", "0.25"))
 
 worker_executor: Optional[ProcessPoolExecutor] = None
@@ -106,13 +108,18 @@ def plan_audio_chunks(audio_path: str, duration: float) -> tuple[list[tuple[str,
 
     while offset < duration:
         chunk_path = os.path.join(chunk_dir, f"chunk-{index:04d}.wav")
-        chunk_duration = min(float(CHUNK_SECONDS), duration - offset)
+        remaining = duration - offset
+        # INA's MFCC framing crashes on near-empty audio, so a short tail joins the previous chunk.
+        if remaining < CHUNK_SECONDS + MIN_TAIL_SECONDS:
+            chunk_duration = remaining
+        else:
+            chunk_duration = float(CHUNK_SECONDS)
         chunks.append((chunk_path, offset, chunk_duration))
-        offset += float(CHUNK_SECONDS)
+        offset += chunk_duration
         index += 1
 
     log.info(
-        "Will split %.1fs audio into %d chunks of up to %ss",
+        "Will split %.1fs audio into %d chunks of about %ss",
         duration,
         len(chunks),
         CHUNK_SECONDS,
@@ -184,6 +191,16 @@ def get_worker_executor() -> ProcessPoolExecutor:
             mp_context=mp.get_context("spawn"),
         )
     return worker_executor
+
+
+async def replace_broken_executor(broken: ProcessPoolExecutor) -> ProcessPoolExecutor:
+    global worker_executor
+
+    async with worker_lock:
+        if worker_executor is broken:
+            worker_executor = None
+            broken.shutdown(wait=False, cancel_futures=True)
+        return get_worker_executor()
 
 
 def unload_worker() -> None:
@@ -301,11 +318,20 @@ async def segment(file: UploadFile = File(...)):
                         chunk_duration,
                     )
 
-                chunk_result = await loop.run_in_executor(
-                    executor,
-                    run_segmentation_job,
-                    chunk_path,
-                )
+                try:
+                    chunk_result = await loop.run_in_executor(
+                        executor,
+                        run_segmentation_job,
+                        chunk_path,
+                    )
+                except BrokenProcessPool:
+                    log.warning("Segmentation worker died; restarting it and retrying chunk %d", index)
+                    executor = await replace_broken_executor(executor)
+                    chunk_result = await loop.run_in_executor(
+                        executor,
+                        run_segmentation_job,
+                        chunk_path,
+                    )
                 result.extend(
                     (label, start + offset, end + offset)
                     for label, start, end in chunk_result

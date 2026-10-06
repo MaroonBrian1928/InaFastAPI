@@ -9,14 +9,14 @@ CPU via TensorFlow. Local development uses `mise` for tool management and
 
 ## Service
 
-- Container: `ina-segmenter-api-ina-segmenter-1`
+- Container: `inafastapi-ina-segmenter-1`
 - Host port: `8002`
 - Container port: `8000`
 - Endpoint: `POST /segment`
 - Model: loaded on demand in a dedicated worker process with `detect_gender=False`
 - Long uploads: split into bounded audio chunks before segmentation to reduce peak TensorFlow memory
 - Worker lifecycle: kept warm while requests are active, then terminated after the idle timeout to release TensorFlow memory back to the OS
-- Model cache: persisted in a Docker volume mounted at `/root/.cache`
+- Model weights: downloaded from GitHub on first use and persisted in a Docker volume mounted at `/root/.keras`
 
 ## Memory Controls
 

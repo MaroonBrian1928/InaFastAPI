@@ -9,7 +9,7 @@ TF_CPP_MIN_LOG_LEVEL = "2"
 description = "Install Python dependencies for local development"
 run = """
 uv sync
-uv pip install --python .venv/bin/python --no-deps inaSpeechSegmenter
+uv pip install --python .venv/bin/python --no-deps inaSpeechSegmenter==0.8.0
 """
 
 [tasks.run]

@@ -5,14 +5,14 @@ ENV UV_LINK_MODE=copy
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /bin/
 
 WORKDIR /app
-COPY pyproject.toml .
-RUN uv sync --no-dev
-RUN uv pip install --python .venv/bin/python --no-deps inaSpeechSegmenter
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-cache
+RUN uv pip install --no-cache --python .venv/bin/python --no-deps inaSpeechSegmenter==0.8.0
 COPY main.py .
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
