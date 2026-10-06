@@ -24,7 +24,7 @@ IDLE_TIMEOUT_SECONDS = int(os.getenv("SEGMENTER_IDLE_TIMEOUT_SECONDS", "60"))
 UPLOAD_READ_SIZE = int(os.getenv("SEGMENTER_UPLOAD_READ_SIZE", str(1024 * 1024)))
 CHUNK_SECONDS = int(os.getenv("SEGMENTER_CHUNK_SECONDS", "600"))
 CHUNK_MIN_SECONDS = int(os.getenv("SEGMENTER_CHUNK_MIN_SECONDS", "900"))
-MIN_TAIL_SECONDS = 60
+TAIL_MERGE_SECONDS = float(os.getenv("SEGMENTER_TAIL_MERGE_SECONDS", "60"))
 MERGE_GAP_SECONDS = float(os.getenv("SEGMENTER_MERGE_GAP_SECONDS", "0.25"))
 
 worker_executor: Optional[ProcessPoolExecutor] = None
@@ -110,7 +110,7 @@ def plan_audio_chunks(audio_path: str, duration: float) -> tuple[list[tuple[str,
         chunk_path = os.path.join(chunk_dir, f"chunk-{index:04d}.wav")
         remaining = duration - offset
         # INA's MFCC framing crashes on near-empty audio, so a short tail joins the previous chunk.
-        if remaining < CHUNK_SECONDS + MIN_TAIL_SECONDS:
+        if remaining < CHUNK_SECONDS + TAIL_MERGE_SECONDS:
             chunk_duration = remaining
         else:
             chunk_duration = float(CHUNK_SECONDS)
@@ -193,14 +193,19 @@ def get_worker_executor() -> ProcessPoolExecutor:
     return worker_executor
 
 
-async def replace_broken_executor(broken: ProcessPoolExecutor) -> ProcessPoolExecutor:
+async def run_in_worker(job, *args):
     global worker_executor
 
     async with worker_lock:
-        if worker_executor is broken:
-            worker_executor = None
-            broken.shutdown(wait=False, cancel_futures=True)
-        return get_worker_executor()
+        executor = get_worker_executor()
+    try:
+        return await asyncio.get_running_loop().run_in_executor(executor, job, *args)
+    except BrokenProcessPool:
+        async with worker_lock:
+            if worker_executor is executor:
+                worker_executor = None
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
 
 
 def unload_worker() -> None:
@@ -286,7 +291,6 @@ async def segment(file: UploadFile = File(...)):
     try:
         tmp_path = await save_upload_to_temp_file(file, suffix)
         t0 = time.time()
-        loop = asyncio.get_running_loop()
         duration = await run_in_thread(probe_duration_seconds, tmp_path)
         chunks, chunk_dir = await run_in_thread(
             plan_audio_chunks,
@@ -294,9 +298,7 @@ async def segment(file: UploadFile = File(...)):
             duration or 0.0,
         )
         result = []
-
-        async with worker_lock:
-            executor = get_worker_executor()
+        worker_restarted = False
 
         for index, (chunk_path, offset, chunk_duration) in enumerate(chunks, start=1):
             if len(chunks) > 1:
@@ -318,20 +320,15 @@ async def segment(file: UploadFile = File(...)):
                         chunk_duration,
                     )
 
-                try:
-                    chunk_result = await loop.run_in_executor(
-                        executor,
-                        run_segmentation_job,
-                        chunk_path,
-                    )
-                except BrokenProcessPool:
-                    log.warning("Segmentation worker died; restarting it and retrying chunk %d", index)
-                    executor = await replace_broken_executor(executor)
-                    chunk_result = await loop.run_in_executor(
-                        executor,
-                        run_segmentation_job,
-                        chunk_path,
-                    )
+                while True:
+                    try:
+                        chunk_result = await run_in_worker(run_segmentation_job, chunk_path)
+                        break
+                    except BrokenProcessPool:
+                        if worker_restarted:
+                            raise
+                        worker_restarted = True
+                        log.warning("Segmentation worker died; restarting it and retrying chunk %d", index)
                 result.extend(
                     (label, start + offset, end + offset)
                     for label, start, end in chunk_result

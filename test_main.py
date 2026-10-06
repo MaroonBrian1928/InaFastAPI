@@ -1,6 +1,10 @@
+import asyncio
+import os
 import shutil
+from concurrent.futures.process import BrokenProcessPool
 
-from main import merge_adjacent_segments, plan_audio_chunks
+import main
+from main import merge_adjacent_segments, plan_audio_chunks, run_in_worker
 
 
 def chunk_spans(duration):
@@ -23,7 +27,27 @@ def test_merge_adjacent_segments():
     ) == [("speech", 0, 700), ("music", 700, 710)]
 
 
+def exit_worker():
+    os._exit(1)
+
+
+def test_run_in_worker_replaces_dead_worker():
+    async def scenario():
+        try:
+            await run_in_worker(exit_worker)
+        except BrokenProcessPool:
+            pass
+        else:
+            raise AssertionError("expected BrokenProcessPool")
+        assert main.worker_executor is None
+        assert await run_in_worker(os.getpid) != os.getpid()
+        main.unload_worker()
+
+    asyncio.run(scenario())
+
+
 if __name__ == "__main__":
     test_plan_audio_chunks()
     test_merge_adjacent_segments()
+    test_run_in_worker_replaces_dead_worker()
     print("ok")

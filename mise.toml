@@ -7,10 +7,7 @@ TF_CPP_MIN_LOG_LEVEL = "2"
 
 [tasks.install]
 description = "Install Python dependencies for local development"
-run = """
-uv sync
-uv pip install --python .venv/bin/python --no-deps inaSpeechSegmenter==0.8.0
-"""
+run = "uv sync --locked"
 
 [tasks.run]
 description = "Run the FastAPI app locally"

@@ -10,7 +10,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-cache
-RUN uv pip install --no-cache --python .venv/bin/python --no-deps inaSpeechSegmenter==0.8.0
 COPY main.py .
 
 EXPOSE 8000

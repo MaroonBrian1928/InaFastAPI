@@ -5,6 +5,7 @@ description = "FastAPI wrapper around inaSpeechSegmenter"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "fastapi",
+  "inaSpeechSegmenter==0.8.0",
   "matplotlib",
   "pandas",
   "pyannote.core",
@@ -19,3 +20,9 @@ dependencies = [
 
 [tool.uv]
 package = false
+# inaSpeechSegmenter requires GPU builds; tensorflow-cpu provides TensorFlow here.
+override-dependencies = [
+  "tensorflow; sys_platform == 'never'",
+  "onnxruntime-gpu; sys_platform == 'never'",
+  "pyro4; sys_platform == 'never'",
+]

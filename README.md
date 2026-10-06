@@ -25,6 +25,7 @@ audio in chunks before handing work to the TensorFlow worker.
 
 - `SEGMENTER_CHUNK_SECONDS`: chunk size for long audio, in seconds. Defaults to `600`.
 - `SEGMENTER_CHUNK_MIN_SECONDS`: minimum input duration before chunking is used. Defaults to `900`.
+- `SEGMENTER_TAIL_MERGE_SECONDS`: a final chunk shorter than this joins the previous chunk. Defaults to `60`.
 - `SEGMENTER_MERGE_GAP_SECONDS`: max same-label gap to merge after chunk stitching. Defaults to `0.25`.
 - `SEGMENTER_UPLOAD_READ_SIZE`: upload streaming buffer size in bytes. Defaults to `1048576`.
 - `SEGMENTER_IDLE_TIMEOUT_SECONDS`: warm worker idle lifetime. Defaults to `60`.
