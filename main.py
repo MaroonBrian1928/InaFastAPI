@@ -1,6 +1,5 @@
 import asyncio
 import gc
-import hashlib
 import logging
 import multiprocessing as mp
 import os
@@ -28,17 +27,13 @@ CHUNK_MIN_SECONDS = int(os.getenv("SEGMENTER_CHUNK_MIN_SECONDS", "900"))
 TAIL_MERGE_SECONDS = float(os.getenv("SEGMENTER_TAIL_MERGE_SECONDS", "60"))
 MERGE_GAP_SECONDS = float(os.getenv("SEGMENTER_MERGE_GAP_SECONDS", "0.25"))
 
-# inaSpeechSegmenter trusts any readable file at this path, so a download cut short would be reused forever.
-MODEL_PATH = os.path.expanduser("~/.keras/inaSpeechSegmenter/keras_speech_music_noise_cnn.hdf5")
-MODEL_SHA256 = "f04b5e3c86fa2e81666d106b0867350fe7858c7bd006c2a74c27b5b45507e7d8"
-
 worker_executor: Optional[ProcessPoolExecutor] = None
 worker_lock = asyncio.Lock()
 worker_unload_task: Optional[asyncio.Task] = None
 worker_last_used_at = 0.0
 worker_active_requests = 0
 
-_worker_segmenter = None
+_worker_segment = None
 
 
 async def run_in_thread(func, *args, **kwargs):
@@ -46,28 +41,16 @@ async def run_in_thread(func, *args, **kwargs):
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
-def discard_corrupt_model() -> None:
-    try:
-        with open(MODEL_PATH, "rb") as f:
-            digest = hashlib.file_digest(f, "sha256").hexdigest()
-    except FileNotFoundError:
-        return
-    if digest != MODEL_SHA256:
-        log.warning("Discarding corrupt cached model %s", MODEL_PATH)
-        os.unlink(MODEL_PATH)
-
-
 def run_segmentation_job(audio_path: str):
-    global _worker_segmenter
+    global _worker_segment
 
-    if _worker_segmenter is None:
+    if _worker_segment is None:
         log.info("Loading INA segmenter model in worker process")
-        discard_corrupt_model()
-        from inaSpeechSegmenter import Segmenter
+        from engine import segment
 
-        _worker_segmenter = Segmenter(detect_gender=False)
+        _worker_segment = segment
         log.info("INA segmenter model ready in worker process")
-    return _worker_segmenter(audio_path)
+    return _worker_segment(audio_path)
 
 
 async def save_upload_to_temp_file(file: UploadFile, suffix: str) -> str:
