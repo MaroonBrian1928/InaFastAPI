@@ -2,9 +2,6 @@
 python = "3.13"
 uv = "latest"
 
-[env]
-TF_CPP_MIN_LOG_LEVEL = "2"
-
 [tasks.install]
 description = "Install Python dependencies for local development"
 run = "uv sync --locked"

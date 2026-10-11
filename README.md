@@ -4,7 +4,7 @@ A lightweight FastAPI wrapper around
 [inaSpeechSegmenter](https://github.com/ina-foss/inaSpeechSegmenter)
 that accepts audio file uploads and returns labeled time segments
 (speech, music, noise, etc.). The service is designed to run in Docker on
-CPU via TensorFlow. Local development uses `mise` for tool management and
+CPU via ONNX Runtime. Local development uses `mise` for tool management and
 `uv` for Python dependency management and command execution.
 
 ## Service
@@ -14,21 +14,22 @@ CPU via TensorFlow. Local development uses `mise` for tool management and
 - Container port: `8000`
 - Endpoint: `POST /segment`
 - Model: loaded on demand in a dedicated worker process with `detect_gender=False`
-- Long uploads: split into bounded audio chunks before segmentation to reduce peak TensorFlow memory
-- Worker lifecycle: kept warm while requests are active, then terminated after the idle timeout to release TensorFlow memory back to the OS
-- Model weights: downloaded from GitHub on first use and persisted in a Docker volume mounted at `/root/.keras`
+- Long uploads: split into bounded audio chunks before segmentation to bound peak memory
+- Worker lifecycle: kept warm while requests are active, then terminated after the idle timeout to release memory back to the OS
+- Model: INA's speech/music/noise CNN exported to ONNX at `models/speech_music_noise_cnn.onnx` (`scripts/export_onnx.py`); `engine.py` runs INA's pipeline on it without TensorFlow
 
 ## Memory Controls
 
 The service avoids reading full uploads into Python memory and processes long
-audio in chunks before handing work to the TensorFlow worker.
+audio in chunks before handing work to the segmentation worker.
 
-- `SEGMENTER_CHUNK_SECONDS`: chunk size for long audio, in seconds. Defaults to `600`.
+- `SEGMENTER_CHUNK_SECONDS`: chunk size for long audio, in seconds. Defaults to `600`. Changing it changes results slightly, since INA sets its silence threshold per chunk.
 - `SEGMENTER_CHUNK_MIN_SECONDS`: minimum input duration before chunking is used. Defaults to `900`.
 - `SEGMENTER_TAIL_MERGE_SECONDS`: a final chunk shorter than this joins the previous chunk. Defaults to `60`.
 - `SEGMENTER_MERGE_GAP_SECONDS`: max same-label gap to merge after chunk stitching. Defaults to `0.25`.
 - `SEGMENTER_UPLOAD_READ_SIZE`: upload streaming buffer size in bytes. Defaults to `1048576`.
 - `SEGMENTER_IDLE_TIMEOUT_SECONDS`: warm worker idle lifetime. Defaults to `60`.
+- `SEGMENTER_THREADS`: ONNX Runtime intra-op threads. Defaults to `0` (one per physical core). Set it to the container's CPU limit, which ONNX Runtime cannot see.
 
 ## Run
 
@@ -60,6 +61,12 @@ Example response:
   {"label": "speech", "start": 18.3, "end": 45.1}
 ]
 ```
+
+## Parity
+
+`engine.py` must produce the same segments as upstream inaSpeechSegmenter.
+After upgrading inaSpeechSegmenter, ONNX Runtime, or numpy, run `scripts/parity.py`
+against a set of real recordings; its docstring has the commands.
 
 ## Segment Labels
 

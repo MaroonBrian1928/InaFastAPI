@@ -7,6 +7,7 @@ dependencies = [
   "fastapi",
   "inaSpeechSegmenter==0.8.0",
   "matplotlib",
+  "onnxruntime",
   "pandas",
   "pyannote.core",
   "python-multipart",
@@ -14,13 +15,12 @@ dependencies = [
   "scikit-image",
   "soundfile",
   "sortedcontainers",
-  "tensorflow-cpu",
   "uvicorn",
 ]
 
 [tool.uv]
 package = false
-# inaSpeechSegmenter requires GPU builds; tensorflow-cpu provides TensorFlow here.
+# inaSpeechSegmenter requires TensorFlow and GPU builds; engine.py runs its model on CPU onnxruntime instead.
 override-dependencies = [
   "tensorflow; sys_platform == 'never'",
   "onnxruntime-gpu; sys_platform == 'never'",

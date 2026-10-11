@@ -3,9 +3,6 @@ services:
     build: .
     ports:
       - "8002:8000"
-    volumes:
-      # inaSpeechSegmenter downloads its model weights here on first use.
-      - keras-cache:/root/.keras
     restart: unless-stopped
     healthcheck:
       # No dedicated health route; FastAPI's schema endpoint answers once the app is up.
@@ -14,6 +11,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
-
-volumes:
-  keras-cache:
