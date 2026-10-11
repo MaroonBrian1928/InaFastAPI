@@ -1,12 +1,15 @@
 import asyncio
+import importlib.util
 import os
 import shutil
 import tempfile
 from concurrent.futures.process import BrokenProcessPool
 
+import numpy as np
+
+import engine
 import main
 from main import (
-    discard_corrupt_model,
     merge_adjacent_segments,
     plan_audio_chunks,
     run_in_worker,
@@ -53,14 +56,25 @@ def test_run_in_worker_replaces_dead_worker():
     asyncio.run(scenario())
 
 
-def test_discard_corrupt_model():
-    with tempfile.TemporaryDirectory() as tmp:
-        main.MODEL_PATH = os.path.join(tmp, "model.hdf5")
-        discard_corrupt_model()
-        with open(main.MODEL_PATH, "wb") as f:
-            f.write(b"truncated")
-        discard_corrupt_model()
-        assert not os.path.exists(main.MODEL_PATH)
+def test_blocked_mfcc_matches_upstream():
+    spec = importlib.util.spec_from_file_location("upstream_mfcc", engine.sidekit_mfcc.__file__)
+    upstream = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(upstream)
+    block = engine.SPECTRUM_BLOCK_FRAMES
+    for frames in (2, block, block + 1, 3 * block + 1):
+        sig = np.random.default_rng(frames).normal(size=(frames - 1) * 160 + 400).astype(np.float32)
+        expected, actual = upstream.mfcc(sig, get_mspec=True), engine.sidekit_mfcc.mfcc(sig, get_mspec=True)
+        assert np.array_equal(expected[1], actual[1]) and np.array_equal(expected[3], actual[3]), frames
+
+
+def test_patches_match_upstream():
+    for frames in (68, 69, 300, 301):
+        mspec = np.random.default_rng(frames).normal(size=(frames, 21)).astype(np.float32)
+        mspec[frames // 2] = np.nan
+        expected, _ = engine.segmenter._get_patches(mspec, engine.PATCH_FRAMES, engine.PATCH_STEP)
+        n_windows = (frames - engine.PATCH_FRAMES) // engine.PATCH_STEP + 1
+        actual = engine.patches(mspec, np.arange(len(expected)), n_windows)
+        assert np.array_equal(expected.reshape(len(expected), -1), actual, equal_nan=True), frames
 
 
 class FailingUpload:
@@ -83,6 +97,7 @@ if __name__ == "__main__":
     test_plan_audio_chunks()
     test_merge_adjacent_segments()
     test_run_in_worker_replaces_dead_worker()
-    test_discard_corrupt_model()
+    test_blocked_mfcc_matches_upstream()
+    test_patches_match_upstream()
     test_failed_upload_removes_temp_file()
     print("ok")
